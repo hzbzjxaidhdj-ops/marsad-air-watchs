@@ -1,1 +1,219 @@
 
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>مرصد الطيران | MARSAD AIR WATCH</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: #07111e;
+      color: #eaf2fb;
+      font-family: Arial, sans-serif;
+    }
+    header {
+      padding: 17px 20px;
+      background: #0c1b2b;
+      border-bottom: 1px solid #24394e;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .brand { font-size: 21px; font-weight: bold; }
+    .brand span { color: #42d6c5; }
+    .sub { color: #91a6bb; font-size: 12px; margin-top: 6px; }
+    .status {
+      color: #f5ca75;
+      border: 1px solid #705b30;
+      background: #302817;
+      padding: 8px 11px;
+      border-radius: 8px;
+      font-size: 12px;
+    }
+    .toolbar {
+      display: flex;
+      gap: 8px;
+      padding: 12px;
+      flex-wrap: wrap;
+      background: #0a1725;
+    }
+    button, select {
+      background: #13283b;
+      border: 1px solid #30465a;
+      color: #edf5ff;
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-size: 13px;
+    }
+    button { cursor: pointer; }
+    button.active { background: #087d78; border-color: #36c8bd; }
+    .notice {
+      padding: 10px 14px;
+      color: #b9c9d9;
+      background: #101f30;
+      font-size: 12px;
+      line-height: 1.8;
+    }
+    #map { height: 62vh; min-height: 370px; background: #101b28; }
+    .panel {
+      margin: 14px;
+      padding: 16px;
+      background: #0d1c2b;
+      border: 1px solid #25394c;
+      border-radius: 12px;
+    }
+    .panel h3 { margin-top: 0; }
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 9px;
+      margin: 12px;
+    }
+    .stat {
+      padding: 13px 8px;
+      background: #0d1c2b;
+      border: 1px solid #25394c;
+      border-radius: 10px;
+      text-align: center;
+    }
+    .stat strong { display: block; font-size: 20px; color: #42d6c5; }
+    .stat span { display: block; color: #9eb2c5; font-size: 11px; margin-top: 7px; }
+    .plane {
+      color: #42d6c5;
+      font-size: 25px;
+      text-shadow: 0 0 8px #087d78;
+      display: inline-block;
+      line-height: 1;
+    }
+    footer {
+      padding: 18px;
+      text-align: center;
+      color: #8095a9;
+      font-size: 12px;
+    }
+    @media(max-width:500px) {
+      .brand { font-size: 18px; }
+      #map { height: 58vh; }
+      .stats { grid-template-columns: repeat(3, 1fr); }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <div class="brand">◈ مرصد الطيران <span>| MARSAD</span></div>
+      <div class="sub">منصة رصد ومتابعة الحركة الجوية</div>
+    </div>
+    <div class="status">● نسخة أولية — بيانات تجريبية</div>
+  </header>
+
+  <div class="toolbar">
+    <button class="active" onclick="showRegion('middle')">الشرق الأوسط</button>
+    <button onclick="showRegion('gulf')">الخليج العربي</button>
+    <button onclick="showRegion('iran')">إيران</button>
+    <button onclick="showRegion('world')">العالم</button>
+    <button onclick="map.setView([31.5,34.8],7)">فلسطين</button>
+    <select id="layer" onchange="changeLayer(this.value)">
+      <option value="street">خريطة الشوارع</option>
+      <option value="satellite">صور الأقمار الصناعية</option>
+    </select>
+  </div>
+
+  <div class="notice">
+    تنبيه: الطائرات المعروضة في هذه النسخة تجريبية وليست مواقع حقيقية مباشرة.
+    سيتم ربط بيانات الطيران الفعلية عند توفر مصدر مناسب.
+  </div>
+
+  <div class="stats">
+    <div class="stat"><strong id="count">0</strong><span>رموز تجريبية</span></div>
+    <div class="stat"><strong>24/7</strong><span>تصميم للرصد المستمر</span></div>
+    <div class="stat"><strong>LIVE</strong><span>الربط المباشر غير مفعّل</span></div>
+  </div>
+
+  <div id="map"></div>
+
+  <section class="panel" id="details">
+    <h3>تفاصيل الرحلة</h3>
+    <p>اضغط على أحد رموز الطائرات التجريبية على الخريطة لعرض تفاصيله.</p>
+    <p class="sub">البيانات التجريبية لا تمثل رحلات حقيقية.</p>
+  </section>
+
+  <footer>
+    مرصد الطيران | MARSAD AIR WATCH<br>
+    منصة مستقلة — لا تمثل جهة طيران رسمية
+  </footer>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    const map = L.map('map').setView([29, 47], 5);
+
+    const street = L.tileLayer(
+      'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+      { attribution: '&copy; OpenStreetMap contributors', maxZoom: 19 }
+    );
+
+    const satellite = L.tileLayer(
+      'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+      { attribution: 'Tiles &copy; Esri', maxZoom: 18 }
+    );
+
+    street.addTo(map);
+    let currentLayer = street;
+    const demoFlights = [
+      {id:'MW-DEMO-01',name:'رحلة تجريبية 01',lat:25.25,lon:55.36,alt:35000,speed:460,heading:65,route:'الخليج العربي'},
+      {id:'MW-DEMO-02',name:'رحلة تجريبية 02',lat:33.5,lon:44.4,alt:31000,speed:430,heading:120,route:'العراق'},
+      {id:'MW-DEMO-03',name:'رحلة تجريبية 03',lat:35.7,lon:51.4,alt:37000,speed:480,heading:250,route:'إيران'},
+      {id:'MW-DEMO-04',name:'رحلة تجريبية 04',lat:30.0,lon:31.2,alt:29000,speed:410,heading:90,route:'مصر'},
+      {id:'MW-DEMO-05',name:'رحلة تجريبية 05',lat:24.7,lon:46.7,alt:33000,speed:450,heading:180,route:'السعودية'},
+      {id:'MW-DEMO-06',name:'رحلة تجريبية 06',lat:31.8,lon:35.2,alt:27000,speed:390,heading:315,route:'بلاد الشام'},
+      {id:'MW-DEMO-07',name:'رحلة تجريبية 07',lat:25.3,lon:51.5,alt:36000,speed:470,heading:40,route:'قطر'},
+      {id:'MW-DEMO-08',name:'رحلة تجريبية 08',lat:23.6,lon:58.4,alt:32000,speed:440,heading:200,route:'سلطنة عُمان'}
+    ];
+
+    const markers = [];
+    demoFlights.forEach(f => {
+      const icon = L.divIcon({
+        className:'',
+        html:`<div class="plane" style="transform:rotate(${f.heading}deg)">✈</div>`,
+        iconSize:[28,28],
+        iconAnchor:[14,14]
+      });
+      const marker = L.marker([f.lat,f.lon],{icon}).addTo(map);
+      marker.on('click', () => {
+        document.getElementById('details').innerHTML = `
+          <h3>${f.name}</h3>
+          <p><b>المعرّف:</b> ${f.id}</p>
+          <p><b>المنطقة:</b> ${f.route}</p>
+          <p><b>الارتفاع:</b> ${f.alt.toLocaleString('en-US')} قدم</p>
+          <p><b>السرعة:</b> ${f.speed} عقدة</p>
+          <p><b>الاتجاه:</b> ${f.heading}°</p>
+          <p class="sub">هذه قيم توضيحية مصطنعة، وليست بيانات رحلة فعلية.</p>`;
+      });
+      markers.push({marker,f});
+    });
+
+    document.getElementById('count').textContent = demoFlights.length;
+
+    function showRegion(region) {
+      const views = {
+        middle:[[29,47],5],
+        gulf:[[25,53],6],
+        iran:[[32,53],5],
+        world:[[25,20],2]
+      };
+      map.setView(views[region][0],views[region][1]);
+    }
+
+    function changeLayer(value) {
+      map.removeLayer(currentLayer);
+      currentLayer = value === 'satellite' ? satellite : street;
+      currentLayer.addTo(map);
+    }
+  </script>
+</body>
+</html>
